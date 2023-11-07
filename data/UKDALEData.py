@@ -154,20 +154,30 @@ def get_activations(chunk, min_off_duration=0, min_on_duration=0,
 
 class UKDALEData(object):
     """
-    It includes all the data preprocessing for single target, multitarget and for the hospital and UK-DALE data.
-
+    Generates training and test sequence from  UK-DALE dataset.
     """
 
     def __init__(self,path = "/data/",dataset="UKDALE"):
         """
         PARAMETERS
             PATH:  PAth to the data.
+        RETURNS
         """
         self.dataPath = os.path.join(path, dataset+".h5")
         self.rawData = pd.read_hdf(self.dataPath)
         self.apps = appliance_data.keys()
 
     def _get_sequences(self,houses = 1, start = "2013-01-01",end="2016-01-01"):
+        """
+        PARAMETERS
+            Houses [list, integer]: ID of building from which the data is extracted
+            start [sring]:          Start datetime of the returned sequence 
+            end [sring]:            End datetime of the returned sequence
+        RETURNS
+            main [numpy array]:     Numpy array with the whole consumption for the selected sequence                   
+            targets [list]:         List with all the numpy array for each of the appliances's consumptions and the selected sequence
+            states [list]:         List with all the numpy array for each of the appliances states and the selected sequence
+        """
         data =self.rawData.loc[start:end]
         data = data[data['House']==houses]
         main   =  (data['main'].values - main_mean)/ main_std
@@ -182,13 +192,43 @@ class UKDALEData(object):
         return main, targets, states
         
     def get_train_sequences(self,houses = 1, start = "2013-01-01",end="2016-01-01"):
+        """
+        It returns training time series
+        PARAMETERS
+            Houses [list, integer]: ID of building from which the data is extracted
+            start [sring]:          Start datetime of the returned sequence 
+            end [sring]:            End datetime of the returned sequence
+        RETURNS
+            main [numpy array]:     Numpy array with the whole consumption for the selected sequence                   
+            targets [list]:         List with all the numpy array for each of the appliances's consumptions and the selected sequence
+            states [list]:         List with all the numpy array for each of the appliances states and the selected sequence
+        """
+
         return self._get_sequences(houses, start,end)
         
 
     def get_test_sequences(self,houses = 1, start = "2016-01-01",end="2016-07-01"):
+        """
+        It returns test time series
+        PARAMETERS
+            Houses [list, integer]: ID of building from which the data is extracted
+            start [sring]:          Start datetime of the returned sequence 
+            end [sring]:            End datetime of the returned sequence
+        RETURNS
+            main [numpy array]:     Numpy array with the whole consumption for the selected sequence                   
+            targets [list]:         List with all the numpy array for each of the appliances's consumptions and the selected sequence
+            states [list]:         List with all the numpy array for each of the appliances states and the selected sequence
+        """
+
         return self._get_sequences(houses, start,end)
         
     def get_app_mean_std(self):
+        """
+        RETURNS
+            means [list]:    means of the stantdad normalization applied to appliances' data
+            stds [list]:     stds of the stantdad normalization applied to appliances' data
+            
+        """
         means = [appliance_data[app]["mean"] for app in self.apps]
         stds = [appliance_data[app]["std"] for app in self.apps]
         means, stds
