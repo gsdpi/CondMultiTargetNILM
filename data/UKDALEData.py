@@ -231,8 +231,10 @@ class UKDALEData(object):
         """
         means = [appliance_data[app]["mean"] for app in self.apps]
         stds = [appliance_data[app]["std"] for app in self.apps]
-        means, stds
-        
+        return means, stds
+    
+    def get_app_data(self):
+        return appliance_data
 
 
 
