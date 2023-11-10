@@ -21,6 +21,27 @@ def get_windows(X,seqLen, stride):
     W = np.vstack(W)
     return W
 
+def agg_windows(W,seqLen,stride):
+    """
+    Inverse of windowing op.
+    PARAMETERS
+        W [numpy array]   -> A matrix of windows vertically stacked 
+        seqLen [int]      -> Sequence lenght
+        stride [int]      -> Stride of the windowing op.
+    RETURN
+        X [numpy array]   -> 1D array
+    """
+    windws = W.shape[0]
+    n = (windws-1)*stride + seqLen
+    sum_arr = np.zeros((n))
+    cont_arr = np.zeros((n))
+    for w in range(windws):
+        sum_arr[ w*stride : w*stride + seqLen] += W[w].ravel()
+        cont_arr[ w*stride : w*stride + seqLen] += 1
+    X = np.divide(sum_arr,cont_arr)
+    return X
+
+
 
 def oneHot(x,n_clss=None):
     x = np.int32(x)

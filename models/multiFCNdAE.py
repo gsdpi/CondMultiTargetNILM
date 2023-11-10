@@ -1,9 +1,10 @@
 # Implementation of tcn from https://arxiv.org/pdf/1803.01271.pdf
 import numpy as np
 from sklearn.metrics import mean_squared_error, mean_absolute_error,r2_score
-from utils import get_windows,oneHot
+from utils import get_windows,agg_windows,oneHot
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
+import os
 
 import ipdb
 layers = tf.keras.layers
@@ -64,11 +65,13 @@ class multiFCNdAE(object):
 
         self.N_capas = params.get("N_capas", 3)
         self.testMetrics = []
+        self.training_hist =None
+        self.model =None
 
         # Net params
         self.n_apps          = len(self.Y_train)
         self.sequence_length = params.get('sequence_length',99)
-        self.sequence_stride = params.get('stride',10)
+        self.stride = params.get('stride',10)
         
         self.convBlocks  = params.get('convBlocks',2)
         self.filters        = params.get('filters',32)
@@ -280,20 +283,72 @@ class multiFCNdAE(object):
                                             callbacks=[ES_cb])
         
 
-
         return self.training_hist        
 
+    def predict_sample(self,X, SD = None):
+        """
+            It predicts a unique sample
+            PARAMETERS
+                X [numpy array]  -> Input sample with the main consumption to be disaggregated.                 
+                SD [numpy array] -> Modulation input. If None all available apps will be disaggregated. 
+                                    If SD is a one hot, the indicated app will be disaggregated
+            RETURN
+                y [list/numpy array] -> array or list of arrays (if SD == None) with the disaggregations
+        """
+        y = []
+        X = X.reshape(-1,self.sequence_length,1,1)
+        
+        if type(SD) == type(np.array([])):
+            return self.model.predict([X,SD])
+        
+        for app in range(self.n_apps):
+            SD = oneHot([app],n_clss=self.n_apps)
+            y.append(self.model.predict([X,SD]))
+
+        return y
+    
     def predict(self,X):
-        return None
+        """
+            It predicts the time serie. It first gets the windowns and then the disaggregations will be computed
+            PARAMETERS
+                X [numpy array]  -> Input sample with the main consumption to be disaggregated.                 
+                SD [numpy array] -> Modulation input. If None all available apps will be disaggregated. 
+                                    If SD is a one hot, the indicated app will be disaggregated
+            RETURN
+                y [list/numpy array] -> array or list of arrays (if SD == None) with the disaggregations
+        """
+        N = len(X)
+        X = self.preprocessing(X,None,method='test')
+        Y = []
+        for app in range(self.n_apps):
+            SD = oneHot([app],n_clss=self.n_apps)
+            SD = np.tile(SD,(X.shape[0],1))
+            y_w = self.model.predict([X,SD],batch_size=300)
+            y  = agg_windows(y_w,self.sequence_length,self.stride)
+            Y.append(y[:N])
+        return Y
         
     def store(self,path):
-        # Método para guardar los pesos en path 
+        if self.training_hist==None:
+            raise Exception("The model has not been trained yet")
+        savePath = os.path.join(path, multiFCNdAE.get_model_name())
+        print(f"saving weights of model {multiFCNdAE.get_model_name()} in path: {savePath}")
+        self.model.save_weights(savePath)
         return None
+    
+    def load(self,path):
+        loadPath = os.path.join(path, multiFCNdAE.get_model_name())
+        if self.model==None:
+            raise Exception("The model has not been defined yet")
+        print(f"restoring weights of model {multiFCNdAE.get_model_name()} from path: {loadPath}")
+        self.model.load_weights(loadPath)
+        return None
+
 
     def preprocessing(self,main,targets,method='train'):
         ###### Inputs ######
         # Windowing op.
-        W_main = get_windows(main,self.sequence_length,self.sequence_stride)
+        W_main = get_windows(main,self.sequence_length,self.stride)
         # Repeting windows for each app
         W_main = np.tile(W_main,(self.n_apps,1))
 
@@ -305,7 +360,7 @@ class multiFCNdAE(object):
             S_D    = []
             for app in range(self.n_apps):
                 
-                W_apps.append(get_windows(targets[app],self.sequence_length,self.sequence_stride))
+                W_apps.append(get_windows(targets[app],self.sequence_length,self.stride))
                 sd = oneHot([app], n_clss = self.n_apps)
                 sd = np.tile(sd,(W_apps[-1].shape[0],1))
                 S_D.append(sd)
@@ -355,7 +410,7 @@ if __name__ == "__main__":
             }  
 
 
-    model = multiFCNdAE(data,{'sequence_length':400,'stride':400,'epochs':10})
+    model = multiFCNdAE(data,{'sequence_length':400,'stride':200,'epochs':2})
     # Preprocessing test
     X,SD,Y = model.preprocessing(data["X_train"],data["Y_train"])
     X = X.squeeze()
@@ -382,4 +437,28 @@ if __name__ == "__main__":
         plt.subplot(2,1,2)
         plt.plot(Y[idx+i,:])
     
+    # Training test
     hist = model.train()
+    model.store('.')
+    model.load('.')
+
+    # Inference test
+    y_est = model.predict_sample(X[idx])
+    plt.figure("Estimation sample")
+    plt.clf()
+    plt.plot(X[idx],label='main')
+    for ii,app in enumerate(app_data.keys()):
+        plt.plot(y_est[ii].squeeze(),label=app)
+    plt.legend()
+
+    y_SD = model.predict_sample(X[idx],oneHot([2],len(app_data.keys())))
+    
+    # Inferring a entire sequence
+    X_ts = trainMain[:10000]
+    Y_ts=model.predict(X_ts)
+    plt.figure("Estimation time series")
+    plt.clf()
+    plt.plot(X_ts,label='main')
+    for ii,app in enumerate(app_data.keys()):
+        plt.plot(Y_ts[ii],label=app)
+    plt.legend()
