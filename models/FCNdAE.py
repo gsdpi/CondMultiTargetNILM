@@ -1,11 +1,11 @@
 # Implementation of tcn from https://arxiv.org/pdf/1803.01271.pdf
 import numpy as np
 from sklearn.metrics import mean_squared_error, mean_absolute_error,r2_score
-from utils import get_windows,agg_windows,oneHot
+from .utils import get_windows,agg_windows,oneHot
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 import os
-
+from .BaseModel import BaseModel
 import ipdb
 layers = tf.keras.layers
 K = tf.keras.backend
@@ -15,7 +15,7 @@ initialiazers = tf.keras.initializers
 
 
 
-class FCNdAE(object):
+class FCNdAE(BaseModel):
     def __init__(self,data, params: dict, **kwargs) -> None:      
         
         # Data
@@ -297,7 +297,12 @@ class FCNdAE(object):
     @classmethod
     def target(cls):
         return "single-target" 
-    
+    @classmethod
+    def is_model_for(cls,name):
+        return cls.get_model_name() == name 
+
+
+
 ##########################################
 # Unit testing
 ##########################################

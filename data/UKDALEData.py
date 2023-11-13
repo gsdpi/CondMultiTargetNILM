@@ -233,6 +233,14 @@ class UKDALEData(object):
         stds = [appliance_data[app]["std"] for app in self.apps]
         return means, stds
     
+    def get_main_mean_std(sef):
+        """
+        RETURNS
+            mean:    mean of the stantdad normalization applied to main's data
+            std :     stds of the stantdad normalization applied to main's data
+            
+        """
+        return main_mean, main_std
     def get_app_data(self):
         return appliance_data
 
