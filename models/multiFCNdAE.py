@@ -1,4 +1,3 @@
-# Implementation of tcn from https://arxiv.org/pdf/1803.01271.pdf
 import numpy as np
 from sklearn.metrics import mean_squared_error, mean_absolute_error,r2_score
 from .utils import get_windows,agg_windows,oneHot
@@ -67,7 +66,7 @@ class multiFCNdAE(BaseModel):
 
         # Net params
         self.n_apps          = len(self.Y_train)
-        self.sequence_length = params.get('sequence_length',99)
+        self.sequence_length = params.get('sequence_length',100)
         self.stride = params.get('stride',10)
         
         self.convBlocks  = params.get('convBlocks',2)

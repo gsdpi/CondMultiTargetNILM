@@ -2,7 +2,7 @@
 from models import *
 import pandas as pd
 from address import *
-import ast
+import json
 
 
 # Model factory pattern
@@ -24,8 +24,12 @@ def modelGen(modelID:str,data,params:dict={},verbose=True,debug = False):
         if verbose:
             print("loading best hyperparameters")
         params_path  = get_param_path(modelID)
-        df_params    = pd.read_csv(params_path,index_col=0)
-        params       = ast.literal_eval(df_params.loc[data.dataID,'params'])[0]
+        
+        with open(params_path) as f:
+            params = json.load(f)
+        
+        #df_params    = pd.read_csv(params_path,index_col=0)
+        #params       = ast.literal_eval(df_params.loc[data.dataID,'params'])[0]
 
 
     #TODO: Make it more generic: https://stackoverflow.com/questions/456672/class-factory-in-python 
@@ -40,20 +44,40 @@ def modelGen(modelID:str,data,params:dict={},verbose=True,debug = False):
 
 if __name__ == "__main__":
     import ipdb
-    from data import HOSPData
+    from data import HOSPData,UKDALEData
     import matplotlib.pyplot as plt
 
-    dataGen = HOSPData(path="./data/")
-    trainMain,trainTargets, trainStates = dataGen.get_train_sequences( start = "2018-04-01",end="2019-02-28")
-    testMain,testTargets, testStates = dataGen.get_train_sequences( start = "2018-03-01",end="2018-04-01")
+    # # Ejemplo lectura hospital
+    # dataGen = HOSPData(path="./data/")
+    # trainMain,trainTargets, trainStates = dataGen.get_train_sequences( start = "2018-04-01",end="2019-02-28")
+    # testMain,testTargets, testStates = dataGen.get_train_sequences( start = "2018-03-01",end="2018-04-01")
+    # app_data = dataGen.get_app_data()
+
+    # data= {"X_train":trainMain,
+    #        "Y_train":trainTargets,
+    #        "Z_train":trainStates,
+    #         "X_test":testMain,
+    #         "Y_test":testTargets,
+    #         "apps": app_data.keys()
+    #         }  
+    
+    # TEST UKDALE AND U-NET
+    plt.ion()
+    dataGen = UKDALEData(path="./data/")
+    trainMain,trainTargets, trainStates = dataGen.get_train_sequences(houses = 1, start = "2014-01-01",end="2016-02-01")
+    testMain,testTargets, testStates = dataGen.get_train_sequences(houses = 1, start = "2016-01-01",end="2016-07-01")
     app_data = dataGen.get_app_data()
 
     data= {"X_train":trainMain,
            "Y_train":trainTargets,
-           "Y_states":trainStates,
+           "Z_train":trainStates,
             "X_test":testMain,
             "Y_test":testTargets,
             "apps": app_data.keys()
             }  
-    params = {'sequence_length':400,'stride':200,'epochs':2}
-    model = modelGen("multiFCNdAE",data,params)
+
+
+    params = {'sequence_length':100,'stride':50,'epochs':2}
+    model = modelGen("UNET",data,params)
+    X,Y = model.preprocessing(data["X_train"],data["Y_train"],data["Z_train"])
+    

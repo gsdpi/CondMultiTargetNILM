@@ -1,4 +1,10 @@
 import numpy as np
+import tensorflow as tf
+import tensorflow.keras.backend as K
+import random as python_random
+import ipdb
+import os
+
 def get_windows(X,seqLen, stride):
     """
     It returns a numpy array with strided windows of length seqLen extracted from X.
@@ -50,6 +56,30 @@ def oneHot(x,n_clss=None):
     y = np.zeros((N,M)).astype(float)
     y[np.arange(N),x.squeeze()] = 1
     return y
+
+# pinball loss
+# https://www.kaggle.com/code/ulrich07/quantile-regression-with-keras
+
+def qloss(qs):
+    # Pinball loss for multiple quantiles
+    
+    def loss(y_true,y_pred):        
+        q = tf.constant(np.array([qs]), dtype=tf.float32)        
+        y_true = tf.stack([y_true]*y_pred.shape[2],axis=-1)
+        e = y_true - y_pred
+        v = tf.maximum(q*e, (q-1)*e)
+        return K.mean(v)
+    return loss
+
+def reset_seeds(seed_value=39):
+    # ref: https://keras.io/getting_started/faq/#how-can-i-obtain-reproducible-results-using-keras-during-development
+    os.environ["PYTHONHASHSEED"] = str(seed_value)
+    # necessary for starting Numpy generated random numbers in a well-defined initial state.
+    np.random.seed(seed_value)
+    # necessary for starting core Python generated random numbers in a well-defined state.
+    python_random.seed(seed_value)
+    # set_seed() will make random number generation
+    tf.random.set_seed(seed_value)
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
