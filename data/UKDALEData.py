@@ -167,7 +167,7 @@ class UKDALEData(object):
         self.rawData = pd.read_hdf(self.dataPath)
         self.apps = appliance_data.keys()
 
-    def _get_sequences(self,houses = 1, start = "2013-01-01",end="2016-01-01"):
+    def _get_sequences(self,houses = 1, start = "2013-01-01",end="2016-01-01",norm = True):
         """
         PARAMETERS
             Houses [list, integer]: ID of building from which the data is extracted
@@ -180,7 +180,9 @@ class UKDALEData(object):
         """
         data =self.rawData.loc[start:end]
         data = data[data['House']==houses]
-        main   =  (data['main'].values - main_mean)/ main_std
+        main = data['main'].values
+        if norm:
+            main   =  (data['main'].values - main_mean)/ main_std
         targets = []
         states  = []
         for app in self.apps:
@@ -188,10 +190,12 @@ class UKDALEData(object):
             # Binarization
             states.append(binarization(target, appliance_data[app]["on_power_threshold"]))
             # Normalization
-            targets.append((target-appliance_data[app]["mean"])/appliance_data[app]["std"])
+            if norm:
+                target = (target-appliance_data[app]["mean"])/appliance_data[app]["std"]
+            targets.append(target)
         return main, targets, states
         
-    def get_train_sequences(self,houses = 1, start = "2013-01-01",end="2016-01-01"):
+    def get_train_sequences(self,houses = 1, start = "2013-01-01",end="2016-01-01",norm = True):
         """
         It returns training time series
         PARAMETERS
@@ -204,10 +208,10 @@ class UKDALEData(object):
             states [list]:         List with all the numpy array for each of the appliances states and the selected sequence
         """
 
-        return self._get_sequences(houses, start,end)
+        return self._get_sequences(houses, start,end,norm)
         
 
-    def get_test_sequences(self,houses = 1, start = "2016-01-01",end="2016-07-01"):
+    def get_test_sequences(self,houses = 1, start = "2016-01-01",end="2016-07-01",norm=True):
         """
         It returns test time series
         PARAMETERS
@@ -220,7 +224,7 @@ class UKDALEData(object):
             states [list]:         List with all the numpy array for each of the appliances states and the selected sequence
         """
 
-        return self._get_sequences(houses, start,end)
+        return self._get_sequences(houses, start,end,norm)
         
     def get_app_mean_std(self):
         """
@@ -250,7 +254,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     plt.ion()
     dataGen = UKDALEData(path=".")
-    trainMain,trainTargets, trainStates = dataGen.get_train_sequences(houses = 1, start = "2013-01-01",end="2016-01-01")
+    trainMain,trainTargets, trainStates = dataGen.get_train_sequences(houses = 1, start = "2013-01-01",end="2016-01-01",norm=False)
     # Test overall pre-processing
     plt.figure("Main")
     plt.clf()
