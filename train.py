@@ -51,7 +51,8 @@ data= {"X_train":trainMain,
         "X_test":testMain,
         "Y_test":testTargets,
         "Z_test":testStates,
-        "apps": app_data.keys()
+        "app_data":dataGen.get_app_data(),
+        "main_data": dataGen.get_main_mean_std()
         }  
  
 

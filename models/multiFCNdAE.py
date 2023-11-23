@@ -65,7 +65,11 @@ class multiFCNdAE(BaseModel):
         self.model =None
 
         # Net params
-        self.n_apps          = len(self.Y_train)
+        self.main_mean       = data["main_data"][0]
+        self.main_std       = data["main_data"][1]
+        self.app_data        = data["app_data"]
+        self.apps            = self.app_data.keys()
+        self.n_apps          = len(self.apps)
         self.sequence_length = params.get('sequence_length',100)
         self.stride = params.get('stride',10)
         
@@ -85,8 +89,6 @@ class multiFCNdAE(BaseModel):
         self.save_model_path = params.get('save-model-path', None)
         self.load_model_path = params.get('pretrained-model-path',None)
         
-        # Metrics
-        self.metrics     = [mean_squared_error, mean_absolute_error,r2_score]        
         
 
         # Model
@@ -304,27 +306,55 @@ class multiFCNdAE(BaseModel):
 
         return y
     
-    def predict(self,X):
+    def predict(self,X_):
         """
             It predicts the time serie. It first gets the windowns and then the disaggregations will be computed
             PARAMETERS
-                X [numpy array]  -> Input sample with the main consumption to be disaggregated.                 
-                SD [numpy array] -> Modulation input. If None all available apps will be disaggregated. 
-                                    If SD is a one hot, the indicated app will be disaggregated
+                X [numpy array]  -> Input sample with the main consumption to be disaggregated. Without normalization                 
             RETURN
-                y [list/numpy array] -> array or list of arrays (if SD == None) with the disaggregations
+                Y [list/numpy array] -> array or list of arrays (if SD == None) with the disaggregations. Without normalization
         """
+        X = np.copy(X_)
         N = len(X)
+        #Normalization of the input
+        X = (X-self.main_mean)/self.main_std
+        # Get input windows
         X = self.preprocessing(X,None,method='test')
         Y = []
-        for app in range(self.n_apps):
-            SD = oneHot([app],n_clss=self.n_apps)
+        # Prediction
+        for ii,app in enumerate(self.app_data.values()):
+            SD = oneHot([ii],n_clss=self.n_apps)
             SD = np.tile(SD,(X.shape[0],1))
             y_w = self.model.predict([X,SD],batch_size=300)
             y  = agg_windows(y_w,self.sequence_length,self.stride)
+            # Denormalization
+            y  = (y * app["std"]) + app["mean"]
             Y.append(y[:N])
         return Y
-        
+
+
+    def evaluate(self, X_, Y_,Z_,metrics):
+        """
+            It computes the metrics between Y_ and Z_ and the estimation obtained from X_. 
+            PARAMETERS
+                X_ [numpy array]  -> Input sample with the main consumption to be disaggregated. Without normalization                
+                Y_ [numpy array]  -> Ground Truth output consumptions
+                Z_ [numpy array]  -> Ground Truth output states
+                metrics [list]    -> List with the metrcis to be applied
+            RETURN
+                SCORES [list] -> list with the scores for all the appliances and metrics
+        """
+        scores = []
+        Y = np.copy(Y_)
+        X = np.copy(X_)        
+        Y_est = self.predict(X)
+        for metric in metrics:
+            for ii,app in enumerate(self.apps):
+                scores.append([app,metric(Y[ii],Y_est[ii]),metric.__name__,self.get_model_name()] )
+            
+        return scores
+
+
     def store(self,path):
         if self.training_hist==None:
             raise Exception("The model has not been trained yet")

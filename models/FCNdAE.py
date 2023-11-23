@@ -26,7 +26,10 @@ class FCNdAE(BaseModel):
         self.model =None
 
         # Net params
-        self.apps            = data["apps"]
+        self.main_mean       = data["main_data"][0]
+        self.main_std       = data["main_data"][1]
+        self.app_data        = data["app_data"]
+        self.apps            = list(self.app_data.keys())
         self.n_apps          = len(self.apps)
         self.sequence_length = params.get('sequence_length',100)
         self.stride = params.get('stride',10)
@@ -228,25 +231,50 @@ class FCNdAE(BaseModel):
 
         return y
     
-    def predict(self,X):
+    def predict(self,X_):
         """
             It predicts the time serie. It first gets the windowns and then the disaggregations will be computed
             PARAMETERS
-                X [numpy array]  -> Input sample with the main consumption to be disaggregated.                 
-                SD [numpy array] -> Modulation input. If None all available apps will be disaggregated. 
-                                    If SD is a one hot, the indicated app will be disaggregated
+                X [numpy array]  -> Input sample with the main consumption to be disaggregated. Without normalization                
             RETURN
-                y [list/numpy array] -> array or list of arrays (if SD == None) with the disaggregations
+                Y [list/numpy array] -> array or list of arrays (if SD == None) with the disaggregations. Without normalization
         """
-        N = len(X)
+        N = len(X_)
+        X = np.copy(X_)
+        X = (X-self.main_mean)/self.main_std
         X = self.preprocessing(X,None,method='test')
         Y = []
-        for app in range(self.n_apps):
-            y_w = self.model[app].predict([X],batch_size=300)
+        for ii,app in enumerate(self.app_data.values()):
+            y_w = self.model[ii].predict([X],batch_size=300)
             y  = agg_windows(y_w,self.sequence_length,self.stride)
+            # Denormalization
+            y  = (y * app["std"]) + app["mean"]
             Y.append(y[:N])
         return Y
-        
+
+
+    def evaluate(self, X_, Y_,Z,metrics):
+        """
+            It computes the metrics between Y_ and Z_ and the estimation obtained from X_. 
+            PARAMETERS
+                X_ [numpy array]  -> Input sample with the main consumption to be disaggregated. Without normalization                
+                Y_ [numpy array]  -> Ground Truth output consumptions
+                Z_ [numpy array]  -> Ground Truth output states
+                metrics [list]    -> List with the metrcis to be applied
+            RETURN
+                SCORES [list] -> list with the scores for all the appliances and metrics
+        """
+        scores = []
+        Y = np.copy(Y_)
+        X = np.copy(X_)
+
+        Y_est = self.predict(X)
+        for metric in metrics:
+            for ii,app in enumerate(self.app_data.values()):                
+                scores.append([self.apps[ii],metric(Y[ii],Y_est[ii]),metric.__name__,self.get_model_name()] )
+            
+        return scores
+
     def store(self,path):
         if self.training_hist==None:
             raise Exception("The model has not been trained yet")

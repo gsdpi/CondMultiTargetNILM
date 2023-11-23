@@ -160,7 +160,10 @@ class multiUNET(BaseModel):
         self.model =None
 
         # Net params
-        self.apps            = data["apps"]
+        self.main_mean       = data["main_data"][0]
+        self.main_std       = data["main_data"][1]
+        self.app_data        = data["app_data"]
+        self.apps            = self.app_data.keys()
         self.n_apps          = len(self.apps)
         self.sequence_length = params.get('sequence_length',100)
         self.stride = params.get('stride',1)
@@ -311,27 +314,60 @@ class multiUNET(BaseModel):
 
         return y_est,z_est
     
-    def predict(self,X):
+    def predict(self,X_):
         """
             It predicts the time serie. It first gets the windowns and then the disaggregations will be computed
             PARAMETERS
-                X [numpy array]  -> Input sample with the main consumption to be disaggregated.                 
-                SD [numpy array] -> Modulation input. If None all available apps will be disaggregated. 
-                                    If SD is a one hot, the indicated app will be disaggregated
+                X [numpy array]  -> Input sample with the main consumption to be disaggregated. Without normalization                
             RETURN
-                y [list/numpy array] -> array or list of arrays (if SD == None) with the disaggregations
+                Y [list/numpy array] -> array or list of arrays  with the disaggregations. Without normalization
+                Z [list/numpy array] -> array or list of arrays with the states.
         """
+        X = np.copy(X_)
         N = len(X)
-        X = np.pad(X,(self.sequence_length,0),'constant', constant_values=(0,0))
+        # Normalization
+        X = (X-self.main_mean)/self.main_std
+        # Windowing
+        X = np.pad(X,(self.sequence_length-1,0),'constant', constant_values=(0,0))
         X = get_windows(X,self.sequence_length,1)
         X = X.reshape(-1,self.sequence_length,1)
+        # Prediction
         est = self.model.predict(X,batch_size=500)
-        Y = [est["out_power"][:,app,self.n_quantiles//2+1] for app in range(self.n_apps)]
-        Z = [np.argmax(est["out_state"][:,:,app],axis=1) for app in range(self.n_apps)]
-        
+        Y = []
+        Z = []
+        for ii,app in enumerate(self.app_data.values()):
+            y  = est["out_power"][:,ii,self.n_quantiles//2+1]
+            z  = np.argmax(est["out_state"][:,:,ii],axis=1) 
+            # Denormalization
+            y  = (y * app["std"]) + app["mean"]
+            Y.append(y[:N])
+            Z.append(z) 
 
-        return Y,Z
-        
+        return Y
+
+    def evaluate(self, X_, Y_,Z,metrics):
+        """
+            It computes the metrics between Y_ and Z_ and the estimation obtained from X_. 
+            PARAMETERS
+                X_ [numpy array]  -> Input sample with the main consumption to be disaggregated. Without normalization                
+                Y_ [numpy array]  -> Ground Truth output consumptions
+                Z_ [numpy array]  -> Ground Truth output states
+                metrics [list]    -> List with the metrcis to be applied
+            RETURN
+                SCORES [list] -> list with the scores for all the appliances and metrics
+        """
+        scores = []
+        Y = np.copy(Y_)
+        X = np.copy(X_)
+
+        Y_est = self.predict(X)
+        for metric in metrics:
+            for ii,app in enumerate(self.apps):                
+                scores.append([app,metric(Y[ii],Y_est[ii]),metric.__name__,self.get_model_name()] )
+            
+        return scores
+
+
     def store(self,path):
         if self.training_hist==None:
             raise Exception("The model has not been trained yet")
