@@ -221,7 +221,7 @@ if __name__ == "__main__":
         plt.plot(trainStates[ii][:100000])
         plt.title(app)
 
-    plt.figure("Main vs apps")
+    plt.figure("Main vs apps vs states")
     plt.clf()
     ax1 = plt.subplot(3,1,1)
     plt.plot(trainMain[:100000]+4,label="main")
