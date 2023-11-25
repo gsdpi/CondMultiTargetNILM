@@ -10,11 +10,13 @@ appliance_data = {
         "mean": 700,
         "std": 1000,
         'on_power_threshold': 2000,
+        'window': 10,
         'max_on_power': 3998
     },
     "fridge": {
         "mean": 200,
         "std": 400,
+        'window': 50,
         'on_power_threshold': 50,
         
       
@@ -22,12 +24,14 @@ appliance_data = {
     "dish washer": {
         "mean": 700,
         "std": 700,
+        'window': 50,
         'on_power_threshold': 10
     },
     
     "washing machine": {
         "mean": 400,
         "std": 700,
+        'window': 50,
         'on_power_threshold': 20,
         'max_on_power': 3999
     },
@@ -96,7 +100,7 @@ class UKDALEData(object):
         self.rawData = pd.read_hdf(self.dataPath)
         self.apps = appliance_data.keys()
 
-    def _get_sequences(self,houses = 1, start = "2013-01-01",end="2016-01-01",norm = True):
+    def _get_sequences(self,houses = 1, start = "2013-01-01",end="2016-01-01",norm = True,artificial_agg=True):
         """
         PARAMETERS
             Houses [list, integer]: ID of building from which the data is extracted
@@ -109,22 +113,35 @@ class UKDALEData(object):
         """
         data =self.rawData.loc[start:end]
         data = data[data['House']==houses]
-        main = data['main'].values
-        if norm:
-            main   =  (data['main'].values - main_mean)/ main_std
         targets = []
         states  = []
+        sum_all_app =0
+        # Appliances
         for app in self.apps:
             target = data[app].values
+            # Filtering data
+            target = quantile_filter(appliance_data[app]["window"],target)
+            sum_all_app += target
             # Binarization
             states.append(binarization(target, appliance_data[app]["on_power_threshold"]))
             # Normalization
             if norm:
                 target = (target-appliance_data[app]["mean"])/appliance_data[app]["std"]
             targets.append(target)
+
+        main = data['main'].values
+        
+        if artificial_agg:
+            main = sum_all_app
+        else:
+            main = data['main'].values
+        
+        if norm:
+            main   =  (main - main_mean)/ main_std
+
         return main, targets, states
         
-    def get_train_sequences(self,houses = 1, start = "2013-01-01",end="2016-01-01",norm = True):
+    def get_train_sequences(self,houses = 1, start = "2013-01-01",end="2016-01-01",norm = True,artificial_agg=True):
         """
         It returns training time series
         PARAMETERS
@@ -137,10 +154,10 @@ class UKDALEData(object):
             states [list]:         List with all the numpy array for each of the appliances states and the selected sequence
         """
 
-        return self._get_sequences(houses, start,end,norm)
+        return self._get_sequences(houses, start,end,norm,artificial_agg)
         
 
-    def get_test_sequences(self,houses = 1, start = "2016-01-01",end="2016-07-01",norm=True):
+    def get_test_sequences(self,houses = 1, start = "2016-01-01",end="2016-07-01",norm=True,artificial_agg=True):
         """
         It returns test time series
         PARAMETERS
@@ -153,7 +170,7 @@ class UKDALEData(object):
             states [list]:         List with all the numpy array for each of the appliances states and the selected sequence
         """
 
-        return self._get_sequences(houses, start,end,norm)
+        return self._get_sequences(houses, start,end,norm,artificial_agg)
         
     def get_app_mean_std(self):
         """
@@ -187,20 +204,35 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     plt.ion()
     dataGen = UKDALEData(path=".")
-    trainMain,trainTargets, trainStates = dataGen.get_train_sequences(houses = 1, start = "2013-01-01",end="2016-01-01",norm=False)
+    trainMain,trainTargets, trainStates = dataGen.get_train_sequences(houses = 1, start = "2015-01-01",
+                                                                                  end="2015-03-01",
+                                                                                  norm=True,
+                                                                                  artificial_agg=False)
     # Test overall pre-processing
     plt.figure("Main")
     plt.clf()
-    plt.plot(trainMain[:10000])
+    plt.plot(trainMain[:100000])
 
-    plt.figure("Targers")
+    plt.figure("Targets")
     plt.clf()
     for ii,app in enumerate(appliance_data.keys()):
         plt.subplot(3,2,ii+1)
-        plt.plot(trainTargets[ii][:10000])
-        plt.plot(trainStates[ii][:10000])
+        plt.plot(trainTargets[ii][:100000])
+        plt.plot(trainStates[ii][:100000])
         plt.title(app)
 
-
+    plt.figure("Main vs apps")
+    plt.clf()
+    ax1 = plt.subplot(3,1,1)
+    plt.plot(trainMain[:100000]+4,label="main")
+    plt.legend()
+    ax2 = plt.subplot(3,1,2,sharex=ax1)   
+    for ii,app in enumerate(appliance_data.keys()):
+        plt.plot(trainTargets[ii][:100000],label=app)
+    plt.legend()
+    ax3 = plt.subplot(3,1,3,sharex=ax1)   
+    for ii,app in enumerate(appliance_data.keys()):
+        plt.plot(trainStates[ii][:100000] + 2*ii,label=app)
+    plt.legend()
 
 
