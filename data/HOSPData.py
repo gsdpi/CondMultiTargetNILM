@@ -55,9 +55,11 @@ class HOSPData(object):
         """
         self.dataPath = os.path.join(path, dataset+".h5")
         self.rawData = pd.read_hdf(self.dataPath)
+        self.rawData.dropna(axis=0, inplace=True)
+        
         self.apps = appliance_data.keys()
 
-    def _get_sequences(self, start = "2013-01-01",end="2016-01-01"):
+    def _get_sequences(self, start = "2013-01-01",end="2016-01-01",norm= True):
         """
         PARAMETERS
             Houses [list, integer]: ID of building from which the data is extracted
@@ -69,19 +71,24 @@ class HOSPData(object):
             states [list]:         List with all the numpy array for each of the appliances states and the selected sequence
         """
         data =self.rawData.loc[start:end]
-        main   =  (data['CGBT-2.Red-Grupo'].values - main_mean)/ main_std
+        
+        main = data['CGBT-2.Red-Grupo'].values
+        if norm:
+            main   =  (main - main_mean)/ main_std
         targets = []
         states  = []
         for app in self.apps:
             meterID = appliance_data[app]["meter_name"]
-            target = self.rawData[meterID].values
+            target = data[meterID].values
             # Binarization
             states.append(None)
             # Normalization
-            targets.append((target-appliance_data[app]["mean"])/appliance_data[app]["std"])
+            if norm:
+                target = (target-appliance_data[app]["mean"])/appliance_data[app]["std"]
+            targets.append(target)
         return main, targets, states
         
-    def get_train_sequences(self, start = "2018-04-01",end="2019-02-28"):
+    def get_train_sequences(self, start = "2018-04-01",end="2019-02-28",norm = True):
         """
         It returns training time series
         PARAMETERS
@@ -94,10 +101,10 @@ class HOSPData(object):
             states [list]:         List with all the numpy array for each of the appliances states and the selected sequence
         """
 
-        return self._get_sequences( start,end)
+        return self._get_sequences( start,end,norm)
         
 
-    def get_test_sequences(self, start = "2018-03-01",end="2018-04-01"):
+    def get_test_sequences(self, start = "2018-03-01",end="2018-04-01",norm = True):
         """
         It returns test time series
         PARAMETERS
@@ -110,7 +117,7 @@ class HOSPData(object):
             states [list]:         List with all the numpy array for each of the appliances states and the selected sequence
         """
 
-        return self._get_sequences( start,end)
+        return self._get_sequences( start,end,norm)
         
     def get_app_mean_std(self):
         """
@@ -141,7 +148,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     plt.ion()
     dataGen = HOSPData(path=".")
-    trainMain,trainTargets, trainStates = dataGen.get_train_sequences( start = "2018-04-01",end="2019-02-28")
+    trainMain,trainTargets, trainStates = dataGen.get_train_sequences( start = "2018-04-01",end="2019-02-28",norm=True)
     # Test overall pre-processing
     plt.figure("Main")
     plt.clf()

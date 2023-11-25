@@ -93,3 +93,108 @@ if __name__ == "__main__":
     trainMain,trainTargets, trainStates = dataGen.get_train_sequences(houses = 1, start = "2013-01-01",end="2016-01-01 03:00:00")
 
     W,SD,Y = get_windows(trainMain,1440,30)
+
+
+
+
+def get_activations(chunk, min_off_duration=0, min_on_duration=0,
+                    border=1, on_power_threshold=5):
+    """Returns runs of an appliance.
+
+    Most appliances spend a lot of their time off.  This function finds
+    periods when the appliance is on.
+
+    Parameters
+    ----------
+    chunk : pd.Series
+    min_off_duration : int
+        If min_off_duration > 0 then ignore 'off' periods less than
+        min_off_duration seconds of sub-threshold power consumption
+        (e.g. a washing machine might draw no power for a short
+        period while the clothes soak.)  Defaults to 0.
+    min_on_duration : int
+        Any activation lasting less seconds than min_on_duration will be
+        ignored.  Defaults to 0.
+    border : int
+        Number of rows to include before and after the detected activation
+    on_power_threshold : int or float
+        Watts
+
+    Returns
+    -------
+    list of pd.Series.  Each series contains one activation.
+    """
+    chunk = pd.Series(chunk)
+    when_on = chunk >= on_power_threshold
+
+    # Find state changes
+    state_changes = when_on.astype(np.int8).diff()
+    del when_on
+    switch_on_events = np.where(state_changes == 1)[0]
+    switch_off_events = np.where(state_changes == -1)[0]
+    del state_changes
+
+    if len(switch_on_events) == 0 or len(switch_off_events) == 0:
+        return []
+
+    # Make sure events align
+    if switch_off_events[0] < switch_on_events[0]:
+        switch_off_events = switch_off_events[1:]
+        if len(switch_off_events) == 0:
+            return []
+    if switch_on_events[-1] > switch_off_events[-1]:
+        switch_on_events = switch_on_events[:-1]
+        if len(switch_on_events) == 0:
+            return []
+    assert len(switch_on_events) == len(switch_off_events)
+
+    # Smooth over off-durations less than min_off_duration
+    if min_off_duration > 0:
+        off_durations = (chunk.index[switch_on_events[1:]].values -
+                         chunk.index[switch_off_events[:-1]].values)
+
+        off_durations = timedelta64_to_secs(off_durations)
+
+        above_threshold_off_durations = np.where(
+            off_durations >= min_off_duration)[0]
+
+        # Now remove off_events and on_events
+        switch_off_events = switch_off_events[
+            np.concatenate([above_threshold_off_durations,
+                            [len(switch_off_events)-1]])]
+        switch_on_events = switch_on_events[
+            np.concatenate([[0], above_threshold_off_durations+1])]
+    assert len(switch_on_events) == len(switch_off_events)
+
+    activations = []
+    for on, off in zip(switch_on_events, switch_off_events):
+        duration = (chunk.index[off] - chunk.index[on]).total_seconds()
+        if duration < min_on_duration:
+            continue
+        on -= 1 + border
+        if on < 0:
+            on = 0
+        off += border
+        activation = chunk.iloc[on:off]
+        # throw away any activation with any NaN values
+        if not activation.isnull().values.any():
+            activations.append(activation)
+
+    return activations
+
+
+def timedelta64_to_secs(timedelta):
+    """Convert `timedelta` to seconds.
+
+    Parameters
+    ----------
+    timedelta : np.timedelta64
+
+    Returns
+    -------
+    float : seconds
+    """
+    if len(timedelta) == 0:
+        return np.array([])
+    else:
+        return timedelta / np.timedelta64(1, 's')

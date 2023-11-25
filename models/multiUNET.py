@@ -16,9 +16,11 @@ initialiazers = tf.keras.initializers
 
 #  F.nll_loss(F.log_softmax(logits, 1), z)
 def multiLabelLoss(y_true,y_pred):
-    
+    #ipdb.set_trace()
     nll = tf.keras.losses.CategoricalCrossentropy(axis=1,from_logits=False,reduction=tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE)
-    return nll(y_true,tf.nn.softmax(y_pred))
+    
+    return nll(y_true,tf.nn.softmax(y_pred,axis=1))
+
 ## Conv block
 class Conv1D(layers.Layer):
     """
@@ -179,7 +181,7 @@ class multiUNET(BaseModel):
 
         # Training params
         self.epochs = params.get('epochs', 10)
-        self.patience = params.get('patience', 15)
+        self.patience = params.get('patience', 30)
         self.batch_size = params.get('batch_size',128)
         self.data_balance = params.get('data_balance',False)
         
@@ -280,7 +282,7 @@ class multiUNET(BaseModel):
         
         train_X, v_X, train_Y,v_Y,train_Z,v_Z =  train_test_split(X,Y,Z, test_size=.15,random_state=10)  
         ES_cb = tf.keras.callbacks.EarlyStopping( monitor="val_loss",
-                                        min_delta=0.001,
+                                        min_delta=0.0001,
                                         patience=self.patience,                                            
                                         baseline=None,
                                         restore_best_weights=True)
@@ -307,9 +309,8 @@ class multiUNET(BaseModel):
         """
         
         X = X.reshape(-1,self.sequence_length,1)
-        est = self.model.predict(X)
-                            
-        y_est = [est["out_power"][:,app,self.n_quantiles//2+1] for app in range(self.n_apps)]
+        est = self.model.predict(X)                   
+        y_est = [est["out_power"][:,app,self.n_quantiles//2] for app in range(self.n_apps)]
         z_est = [np.argmax(est["out_state"][:,:,app],axis=1) for app in range(self.n_apps)]
 
         return y_est,z_est
@@ -344,6 +345,36 @@ class multiUNET(BaseModel):
             Z.append(z) 
 
         return Y
+
+    def predict_states(self,X_):
+        """
+            It predicts the time serie. It first gets the windowns and then the disaggregations will be computed
+            PARAMETERS
+                X [numpy array]  -> Input sample with the main consumption to be disaggregated. Without normalization                
+            RETURN
+                Y [list/numpy array] -> array or list of arrays  with the disaggregations. Without normalization
+                Z [list/numpy array] -> array or list of arrays with the states.
+        """
+        X = np.copy(X_)
+        N = len(X)
+        # Normalization
+        X = (X-self.main_mean)/self.main_std
+        # Windowing
+        X = np.pad(X,(self.sequence_length-1,0),'constant', constant_values=(0,0))
+        X = get_windows(X,self.sequence_length,1)
+        X = X.reshape(-1,self.sequence_length,1)
+        # Prediction
+        est = self.model.predict(X,batch_size=500)
+        Z = []
+        for ii,app in enumerate(self.app_data.values()):
+            y  = est["out_power"][:,ii,self.n_quantiles//2+1]
+            z  = np.argmax(est["out_state"][:,:,ii],axis=1) 
+            Z.append(z[:N]) 
+
+        return Z
+
+
+
 
     def evaluate(self, X_, Y_,Z,metrics):
         """
@@ -402,6 +433,7 @@ class multiUNET(BaseModel):
             for app in range(self.n_apps):                
                 W_apps.append(get_windows(targets[app],self.sequence_length,self.stride)[:,[-1]])
                 w_states_logit = get_windows(states[app],self.sequence_length,self.stride)[:,[-1]] 
+                
                 W_states.append(oneHot(w_states_logit,n_clss=2))
                 
             
@@ -409,6 +441,7 @@ class multiUNET(BaseModel):
             W_main = W_main.reshape(-1,self.sequence_length,1)
             W_apps = np.hstack(W_apps)
             W_states  = np.stack(W_states,axis=-1)
+
             return W_main, W_apps,W_states
 
     
@@ -423,6 +456,11 @@ class multiUNET(BaseModel):
     @classmethod
     def target(cls):
         return "multi-target" 
+    
+    @classmethod
+    def tast(cls):
+        return "multi-task" 
+
     @classmethod
     def is_model_for(cls,name):
         return cls.get_model_name() == name 

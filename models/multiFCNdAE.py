@@ -316,6 +316,7 @@ class multiFCNdAE(BaseModel):
         """
         X = np.copy(X_)
         N = len(X)
+        
         #Normalization of the input
         X = (X-self.main_mean)/self.main_std
         # Get input windows
@@ -411,6 +412,10 @@ class multiFCNdAE(BaseModel):
     @classmethod
     def target(cls):
         return "multi-target" 
+    @classmethod
+    def tast(cls):
+        return "single-task" 
+
 
     @classmethod
     def is_model_for(cls,name):

@@ -205,7 +205,7 @@ class FCNdAE(BaseModel):
                                             baseline=None,
                                             restore_best_weights=True)
             
-            self.training_hist.append(model_app.fit([train_X], train_Y ,
+            self.training_hist.append(model_app.fit([train_X], [train_Y] ,
                                                 batch_size=self.batch_size,
                                                 epochs=self.epochs,
                                                 validation_data=([v_X], v_Y),
@@ -241,6 +241,7 @@ class FCNdAE(BaseModel):
         """
         N = len(X_)
         X = np.copy(X_)
+        self.stride=self.sequence_length//3
         X = (X-self.main_mean)/self.main_std
         X = self.preprocessing(X,None,method='test')
         Y = []
@@ -325,6 +326,10 @@ class FCNdAE(BaseModel):
     @classmethod
     def target(cls):
         return "single-target" 
+    @classmethod
+    def tast(cls):
+        return "single-task" 
+
     @classmethod
     def is_model_for(cls,name):
         return cls.get_model_name() == name 
