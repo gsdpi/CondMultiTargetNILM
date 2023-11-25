@@ -39,24 +39,8 @@ appliance_data = {
        
     },
 }
-main_mean = 522
-main_std = 814
-
-def timedelta64_to_secs(timedelta):
-    """Convert `timedelta` to seconds.
-
-    Parameters
-    ----------
-    timedelta : np.timedelta64
-
-    Returns
-    -------
-    float : seconds
-    """
-    if len(timedelta) == 0:
-        return np.array([])
-    else:
-        return timedelta / np.timedelta64(1, 's')
+main_mean = 389
+main_std = 445
 
 def binarization(x,thrs):
     """
@@ -65,91 +49,36 @@ def binarization(x,thrs):
     return np.where(x>= thrs,1,0).astype(int)
 
 
+######### Quantile filter ###############
+# Functions for quantile filter from: https://github.com/sambaiga/UNETNiLM/blob/master/src/data/load_data.py:
+# get_perceptile()
+# generate sequences()
+# quatile_filter()
 
-def get_activations(chunk, min_off_duration=0, min_on_duration=0,
-                    border=1, on_power_threshold=5):
-    """Returns runs of an appliance.
-
-    Most appliances spend a lot of their time off.  This function finds
-    periods when the appliance is on.
-
-    Parameters
-    ----------
-    chunk : pd.Series
-    min_off_duration : int
-        If min_off_duration > 0 then ignore 'off' periods less than
-        min_off_duration seconds of sub-threshold power consumption
-        (e.g. a washing machine might draw no power for a short
-        period while the clothes soak.)  Defaults to 0.
-    min_on_duration : int
-        Any activation lasting less seconds than min_on_duration will be
-        ignored.  Defaults to 0.
-    border : int
-        Number of rows to include before and after the detected activation
-    on_power_threshold : int or float
-        Watts
-
-    Returns
-    -------
-    list of pd.Series.  Each series contains one activation.
+def get_percentile(data,p=50):
+    """[summary]
+    
+    Arguments:
+        data {[type]} -- [description]
+        quantile {[type]} -- [description]
+    
+    Returns:
+        [type] -- [description]
     """
-    chunk = pd.Series(chunk)
-    when_on = chunk >= on_power_threshold
+    return np.percentile(data, p, axis=1, interpolation="nearest")
 
-    # Find state changes
-    state_changes = when_on.astype(np.int8).diff()
-    del when_on
-    switch_on_events = np.where(state_changes == 1)[0]
-    switch_off_events = np.where(state_changes == -1)[0]
-    del state_changes
+def generate_sequences(sequence_length, data):
+    sequence_length = sequence_length - 1 if sequence_length% 2==0 else sequence_length
+    units_to_pad = sequence_length // 2
+    new_mains = np.pad(data, (units_to_pad,units_to_pad),'constant',constant_values=(0,0))
+    new_mains = np.array([new_mains[i:i + sequence_length] for i in range(len(new_mains) - sequence_length+1)])
+    return new_mains
 
-    if len(switch_on_events) == 0 or len(switch_off_events) == 0:
-        return []
+def quantile_filter(sequence_length, data, p=50):
+    new_mains = generate_sequences(sequence_length, data)
+    new_mains = get_percentile(new_mains, p)
+    return new_mains
 
-    # Make sure events align
-    if switch_off_events[0] < switch_on_events[0]:
-        switch_off_events = switch_off_events[1:]
-        if len(switch_off_events) == 0:
-            return []
-    if switch_on_events[-1] > switch_off_events[-1]:
-        switch_on_events = switch_on_events[:-1]
-        if len(switch_on_events) == 0:
-            return []
-    assert len(switch_on_events) == len(switch_off_events)
-
-    # Smooth over off-durations less than min_off_duration
-    if min_off_duration > 0:
-        off_durations = (chunk.index[switch_on_events[1:]].values -
-                         chunk.index[switch_off_events[:-1]].values)
-
-        off_durations = timedelta64_to_secs(off_durations)
-
-        above_threshold_off_durations = np.where(
-            off_durations >= min_off_duration)[0]
-
-        # Now remove off_events and on_events
-        switch_off_events = switch_off_events[
-            np.concatenate([above_threshold_off_durations,
-                            [len(switch_off_events)-1]])]
-        switch_on_events = switch_on_events[
-            np.concatenate([[0], above_threshold_off_durations+1])]
-    assert len(switch_on_events) == len(switch_off_events)
-
-    activations = []
-    for on, off in zip(switch_on_events, switch_off_events):
-        duration = (chunk.index[off] - chunk.index[on]).total_seconds()
-        if duration < min_on_duration:
-            continue
-        on -= 1 + border
-        if on < 0:
-            on = 0
-        off += border
-        activation = chunk.iloc[on:off]
-        # throw away any activation with any NaN values
-        if not activation.isnull().values.any():
-            activations.append(activation)
-
-    return activations
 
 
 class UKDALEData(object):
@@ -247,6 +176,10 @@ class UKDALEData(object):
         return main_mean, main_std
     def get_app_data(self):
         return appliance_data
+
+
+
+
 
 
 
