@@ -341,7 +341,7 @@ class multiUNET(BaseModel):
             z  = np.argmax(est["out_state"][:,:,ii],axis=1) 
             # Denormalization
             y  = (y * app["std"]) + app["mean"]
-            Y.append(y[:N])
+            Y.append(y[:N]*z[:N])
             Z.append(z) 
 
         return Y

@@ -31,7 +31,7 @@ class FCNdAE(BaseModel):
         self.app_data        = data["app_data"]
         self.apps            = list(self.app_data.keys())
         self.n_apps          = len(self.apps)
-        self.sequence_length = params.get('sequence_length',100)
+        self.sequence_length = params.get('sequence_length',500)
         self.stride = params.get('stride',10)
         
         self.convBlocks  = params.get('convBlocks',2)
