@@ -1,6 +1,8 @@
 # Implementation of tcn from https://arxiv.org/pdf/1803.01271.pdf
 import numpy as np
 from sklearn.metrics import mean_squared_error, mean_absolute_error,r2_score
+from tensorflow.keras import backend as K
+from time import time
 
 class BaseModel(object):
     def __init__(self,data, params: dict, **kwargs) -> None:      
@@ -64,6 +66,31 @@ class BaseModel(object):
     def load(self, path):
         # Método para cargar los pesos desde el path indicado 
         return None
+
+    def get_num_weights(self):
+        trainable_weights = 0
+        if self.model == None:
+            raise Exception("The model(s) are not created yet")
+        
+        model_list = self.model if type(self.model) == list else [self.model]
+
+        for model in model_list:
+            trainable_weights += int(np.sum([K.count_params(w) for w in model.trainable_weights]))
+
+        return trainable_weights
+
+    def get_inference_time(self,X,n):
+        
+        if self.model == None:
+            raise Exception("The model(s) are not created yet")
+        start = time()
+        for i in range(n):
+            self.predict(X)
+        end = time()
+        return (end-start)/n
+        
+            
+
 
     ##########   MÉTODOS DE LAS CLASES    ##########
     # Estos métodos se pueden llamar sin instar un objeto de la clase
