@@ -94,7 +94,7 @@ class multiFCNdAE(BaseModel):
         # Model
         print(f"Building model: {multiFCNdAE.get_model_name} [{multiFCNdAE.get_model_type}]")
         self.model = self.create_model() 
-
+        self.z_model = self.create_z()
         #############################################################################
 
     def _create_filmGen(self,S_D):
@@ -263,6 +263,9 @@ class multiFCNdAE(BaseModel):
 
         return model
     
+    def create_z(self):
+        return tf.keras.Model(inputs=[self.main_input_layer,self.mod_input_layer],outputs = [self.z])
+    
     def train(self):
         print(f"Training model: {multiFCNdAE.get_model_name} [{multiFCNdAE.get_model_type}]")
         print("Prepocesing data")
@@ -334,6 +337,34 @@ class multiFCNdAE(BaseModel):
         return Y
 
 
+    def predict_z(self,X_):
+        """
+            It returns the latent space activations z. It first gets the windowns from X_ and z vectors will be then computed
+            PARAMETERS
+                X [numpy array]  -> Input sample with the main consumption to be disaggregated. Without normalization                 
+            RETURN
+                z [list/numpy array] -> array with z activations
+        """
+        X = np.copy(X_)
+        N = len(X)
+        
+        #Normalization of the input
+        X = (X-self.main_mean)/self.main_std
+        # Get input windows
+        X = self.preprocessing(X,None,method='test') 
+        Z = []     
+        SD = []  
+        for ii,app in enumerate(self.app_data.values()):
+            sd = oneHot([ii],n_clss=self.n_apps)
+            sd = np.tile(sd,(X.shape[0],1))
+            z_w = self.z_model.predict([X,sd],batch_size=500)
+            Z.append(z_w.squeeze())
+            SD.append(sd)
+        return np.vstack(Z), np.vstack(SD)
+
+
+
+
     def evaluate(self, X_, Y_,Z_,metrics):
         """
             It computes the metrics between Y_ and Z_ and the estimation obtained from X_. 
@@ -377,12 +408,13 @@ class multiFCNdAE(BaseModel):
         ###### Inputs ######
         # Windowing op.
         W_main = get_windows(main,self.sequence_length,self.stride)
-        # Repeting windows for each app
-        W_main = np.tile(W_main,(self.n_apps,1))
+
 
         if method == "test":
             return W_main.reshape(-1,self.sequence_length,1,1)
         else:
+            # Repeting windows for each app
+            W_main = np.tile(W_main,(self.n_apps,1))
             ##### Targets ######
             W_apps = []
             S_D    = []
