@@ -47,6 +47,25 @@ def agg_windows(W,seqLen,stride):
     X = np.divide(sum_arr,cont_arr)
     return X
 
+def agg_act(H,seqLen,stride):
+    """
+    Inverse of windowing op.
+    PARAMETERS
+        H [numpy array]   -> A matrix of activations vertically stacked 
+        seqLen [int]      -> Sequence lenght
+        stride [int]      -> Stride of the windowing op.
+    RETURN
+        X [numpy array]   -> 1D array
+    """
+    windws = H.shape[0]
+    n = (windws-1)*stride + seqLen
+    sum_arr = np.zeros((n,H.shape[-1]))
+    for w in range(windws):
+        sum_arr[ w*stride : w*stride + seqLen,:] += H[w,...]
+        
+    H = sum_arr/windws
+    return H
+
 
 
 def oneHot(x,n_clss=None):

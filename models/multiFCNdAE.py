@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn.metrics import mean_squared_error, mean_absolute_error,r2_score
-from .utils import get_windows,agg_windows,oneHot
+from .utils import get_windows,agg_windows,oneHot,agg_act
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 import os
@@ -329,13 +329,42 @@ class multiFCNdAE(BaseModel):
         for ii,app in enumerate(self.app_data.values()):
             SD = oneHot([ii],n_clss=self.n_apps)
             SD = np.tile(SD,(X.shape[0],1))
-            y_w = self.model.predict([X,SD],batch_size=300)
+            y_w = self.model.predict([X,SD],batch_size=500)
             y  = agg_windows(y_w,self.sequence_length,self.stride)
             # Denormalization
             y  = (y * app["std"]) + app["mean"]
             Y.append(y[:N])
         return Y
 
+
+    def predict_transition(self,X_,SD,std=750,mu=450):
+        """
+            It predicts the time serie. It first gets the windowns and then the disaggregations will be computed
+            PARAMETERS
+                X [numpy array]  -> Input sample with the main consumption to be disaggregated. Without normalization                 
+                SD [numpy array] -> Set of one hot vectors to modulate the predictions
+            RETURN
+                Y [list/numpy array] -> array or list of arrays (if SD == None) with the disaggregations. Without normalization
+        """
+        X = np.copy(X_)
+        N = len(X)
+        N_tran = SD.shape[0]
+        
+        #Normalization of the input
+        X = (X-self.main_mean)/self.main_std
+        # Get input windows
+        X = self.preprocessing(X,None,method='test')
+        Y = []
+        # Prediction
+        for ii in range(N_tran):
+            
+            sd = np.tile(SD[[ii],:],(X.shape[0],1))
+            y_w = self.model.predict([X,sd],batch_size=500)
+            y  = agg_windows(y_w,self.sequence_length,self.stride)
+            # Denormalization
+            y  = (y * std) + mu
+            Y.append(y[:N])
+        return Y
 
     def predict_z(self,X_):
         """
@@ -363,6 +392,46 @@ class multiFCNdAE(BaseModel):
         return np.vstack(Z), np.vstack(SD)
 
 
+    def get_intermediate_activations(self,X_,SD,layers=["Enc_conv0_1","FiLM_GEN_params_conv1_1"]):
+        """
+            It predicts the time serie. It first gets the windowns and then the disaggregations will be computed
+            PARAMETERS
+                X [numpy array]  -> Input sample with the main consumption to be disaggregated. Without normalization                 
+                SD [numpy array] -> Set of one hot vectors to modulate the predictions
+                layer [list of str] -> list with names of layers to extract
+            RETURN
+                Y [list/numpy array] -> array or list of arrays (if SD == None) with the disaggregations. Without normalization
+        """
+        #create a model to get extract the layers
+        
+        act_layers = [self.model.get_layer(l).output for l in layers]
+        model_act = tf.keras.Model(inputs=[self.main_input_layer,self.mod_input_layer],
+                                   outputs = act_layers)
+        X = np.copy(X_)
+        N = len(X)
+        N_tran = SD.shape[0]
+        
+        #Normalization of the input
+        X = (X-self.main_mean)/self.main_std
+        # Get input windows
+        X = self.preprocessing(X,None,method='test')
+        F = []
+        GAMMAS = []
+
+        for ii in range(N_tran):
+            
+            sd = np.tile(SD[[ii],:],(X.shape[0],1))
+            h = model_act.predict([X,sd],batch_size=500)
+            h = [_.squeeze() for _ in h]
+            # Agg F
+            f = agg_act(h[0],self.sequence_length,self.stride)
+            # gamma
+            gamma = 1- h[1][0,:f.shape[1]]
+            f = (f-np.mean(f,axis=1,keepdims=True))/np.std(f,axis=1,keepdims=True)
+            F.append(f)
+            GAMMAS.append(gamma)
+
+        return F, GAMMAS
 
 
     def evaluate(self, X_, Y_,Z_,metrics):
