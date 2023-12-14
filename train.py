@@ -16,7 +16,7 @@ from knockknock import teams_sender
 
 reset_seeds(seed_value=39)
 
-@teams_sender("https://unioviedo.webhook.office.com/webhookb2/b3525ddc-0fdb-43fb-9dde-3811e9811522@05ea74a3-92c5-4c31-978a-925c3c799cd0/IncomingWebhook/5d110a21970a42afab5dcd8c1625db85/0eae7ded-2b5b-4575-bad4-bcc5bc0df017")
+
 def main(args):
     DATASET        = args.dataset
     TRAINING_HOUSE = args.trainHouse
